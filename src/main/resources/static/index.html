@@ -1,0 +1,114 @@
+<html>
+<head>
+    <!-- Load required Bootstrap and BootstrapVue CSS -->
+    <link type="text/css" rel="stylesheet" href="//unpkg.com/bootstrap/dist/css/bootstrap.min.css"/>
+    <link type="text/css" rel="stylesheet" href="//unpkg.com/bootstrap-vue@latest/dist/bootstrap-vue.min.css"/>
+
+    <!-- Load polyfills to support older browsers -->
+    <script src="//polyfill.io/v3/polyfill.min.js?features=es2015%2CMutationObserver" crossorigin="anonymous"></script>
+
+</head>
+<body>
+<div id="app">
+    <b-container>
+        <h1>Websockets</h1>
+        <b-alert
+                :show="dismissCountDown"
+                dismissible
+                variant="warning"
+                @dismissed="dismissCountDown=0"
+                @dismiss-count-down="countDownChanged"
+        >
+            <p>{{alertText}} This alert will dismiss after {{ dismissCountDown }} seconds...</p>
+            <b-progress
+                    variant="warning"
+                    :max="dismissSecs"
+                    :value="dismissCountDown"
+                    height="4px"
+            ></b-progress>
+        </b-alert>
+
+        <button @click="disconnect" v-if="status === 'connected'">Disconnect</button>
+        <button @click="connect" v-if="status === 'disconnected'">Connect</button>
+        {{ status }}
+        <br/><br/>
+        <div v-if="status === 'connected'">
+            <form @submit.prevent="sendMessage" action="#">
+                <input v-model="message">
+                <button type="submit">Send Text Command</button>
+            </form>
+            <ul id="commands">
+                <li v-for="command in commands">
+                    {{command.sessionId}} - {{ command.text }} : {{command.state}}
+                </li>
+            </ul>
+        </div>
+    </b-container>
+</div>
+<script src="//unpkg.com/vue@latest/dist/vue.min.js"></script>
+<script src="//unpkg.com/bootstrap-vue@latest/dist/bootstrap-vue.min.js"></script>
+<script type="text/javascript">
+    const app = new Vue({
+        el: "#app",
+        data: {
+            dismissSecs: 10,
+            dismissCountDown: 0,
+            showDismissibleAlert: false,
+            alertText: "",
+            commands: [],
+            message: "",
+            status: "disconnected"
+        },
+        methods: {
+            countDownChanged(dismissCountDown) {
+                this.dismissCountDown = dismissCountDown
+            },
+            connect() {
+                this.socket = new WebSocket("ws://localhost:8080/command-events");
+                this.socket.onopen = () => {
+                    this.status = "connected";
+                    this.socket.onmessage = ({data}) => {
+                        const event = JSON.parse(data);
+                        this.alertText = `Command ${event.commandId.value} is ${event.state}.`;
+                        this.dismissCountDown = this.dismissSecs;
+                        this.showDismissibleAlert = true;
+                        this.commands.forEach((command)=>{
+                            if (command.sessionId === event.sessionId.value) {
+                                command.state = event.state
+                            }
+                        })
+                    };
+                };
+            },
+            disconnect() {
+                this.socket.close();
+                this.status = "disconnected";
+                this.commands = [];
+            },
+            sendMessage(e) {
+                const sessionId = uuidv4();
+                const command = {sessionId: sessionId, text: this.message, state: "CREATED"};
+                this.socket.send(sessionId);
+
+                this.commands.push(command);
+
+                this.message = "";
+            }
+        },
+
+        mounted: function () {
+            this.connect();
+        }
+
+    });
+
+    function uuidv4() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+            const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+</script>
+</body>
+
+</html>
